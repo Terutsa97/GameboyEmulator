@@ -1,3 +1,5 @@
+package gmu.iit.gameboy;
+
 /**
  * Interrupts Class
  */
@@ -89,7 +91,7 @@ public class Interrupts {
         _memoryMap.pushToStack(Reg_16.PC);
         _registerSet.setPC(interruptType.getHandlerAddress());
 
-        Program.cycles_count += 12;
+        Emulator.cycles_count += 12;
     }
 
     private boolean testIfInterruptSet(InterruptTypes interruptTypes) {

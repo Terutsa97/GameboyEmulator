@@ -2,5 +2,6 @@
     "java.project.sourcePaths": [
         "src",
         "TestingShit"
-    ]
+    ],
+    "java.configuration.updateBuildConfiguration": "interactive"
 }
