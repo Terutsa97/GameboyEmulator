@@ -13,6 +13,7 @@ public class LCD {
     static final int VBLANK_LINE_END = 153;
     static final int OAM_CYCLES = 80;
     static final int VRAM_TRANSFER_CYCLES = 172;
+    static final int SPRITE_COUNT = 40;
 
     static final int VBLANK_PERIOD = CYCLES_TO_DRAW - OAM_CYCLES;
     static final int VRAM_TRANSFER_PERIOD = VBLANK_PERIOD - VRAM_TRANSFER_CYCLES;
@@ -109,7 +110,7 @@ public class LCD {
     public void drawScanLine() {
         char controlReg = _memoryMap.readMemory(MemoryMap.LCDC);
         if ((controlReg & 0x1) > 0) {
-            drawBackgrounds();
+            drawTiles();
         } else {
             drawSprites();
         }
@@ -169,7 +170,7 @@ public class LCD {
         _memoryMap.writeMemory(MemoryMap.STAT, (char)status);
     }
 
-    public void drawBackgrounds() {
+    public void drawTiles() {
         scrollX = _memoryMap.readMemory(MemoryMap.SCX);
         scrollY = _memoryMap.readMemory(MemoryMap.SCY);
         windowX = _memoryMap.readMemory(MemoryMap.WINDOW_X) - 7;
@@ -215,7 +216,8 @@ public class LCD {
             int data1 = _memoryMap.readMemory(tileLocation + line);
             int data2 = _memoryMap.readMemory(tileLocation + line + 1);
 
-            int colorBit = xPos % 8;
+            int colorBit = 7 - (xPos % 8);
+
             int colorNum = ((data2 & (0x1 << colorBit)) > 0 ? 2 : 0) + ((data1 & (0x1 << colorBit)) > 0 ? 1 : 0);
             screenData[i][(int)_memoryMap.readMemory(MemoryMap.LY)] = colorNum;
         }
@@ -226,15 +228,15 @@ public class LCD {
         boolean use8x16 = isOBJSpriteSizeFlag();
         int ySize = use8x16 ? 16 : 8;
 
-        for (int i = 0; i < 40; i++) {
+        for (int i = 0; i < SPRITE_COUNT; i++) {
             int index = i * 4;
             int yPos = (_memoryMap.readMemory(MemoryMap.OAM_START + index) - 16);
             int xPos = (_memoryMap.readMemory(MemoryMap.OAM_START + index + 1) - 8);
             int tileLocation = _memoryMap.readMemory(MemoryMap.OAM_START + index + 2);
             int attributes = _memoryMap.readMemory(MemoryMap.OAM_START + index + 3);
 
-            boolean yFlip = (attributes & (0x1 << 6)) > 0;
-            boolean xFlip = (attributes & (0x1 << 5)) > 0;
+            boolean yFlip = (attributes & (1 << 6)) > 0;
+            boolean xFlip = (attributes & (1 << 5)) > 0;
 
             int currentLine = _memoryMap.readMemory(MemoryMap.LY);
 
@@ -248,8 +250,11 @@ public class LCD {
                 char data2 = _memoryMap.readMemory(dataAddress + 1);
 
                 for (int j = 7; j >= 0; j--) {
+                    int colorBit = xFlip ? 7 - j : j;
+                    int colorNum = ((data2 & (1 << colorBit)) > 0 ? 2 : 0) + ((data1 & (1 << colorBit)) > 0 ? 1 : 0);
+
                     int pixel = 7 + xPos - j;
-                    screenData[pixel][currentLine] = 3;
+                    screenData[pixel][currentLine] = colorNum;
                 }
             }
         }

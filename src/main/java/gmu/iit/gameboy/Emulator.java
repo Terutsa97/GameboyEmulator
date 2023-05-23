@@ -23,7 +23,7 @@ import java.awt.*;
 public class Emulator
 {
     final static int FRAME_RATE = 60;
-    final static int DELTA_TIME = (1000 / FRAME_RATE);
+    final static double DELTA_TIME = (1e9 / FRAME_RATE);
 
     public static Float _fps = 0.0f;
 
@@ -102,35 +102,42 @@ public class Emulator
         final int MAXCYCLES = 69905;  // The amount of cycles that get executed every 60 Hz. (4194304/60)
         cycles_count = 0;
 
-        // System.out.println(cpu.regSet.toString());
-
         while (cycles_count < MAXCYCLES) {
             // System.out.println("SB Contents: " + memoryMap.readMemory(0xFF01)+"\n");
 
-            String regBefore = "Before Op:" + cpu.regSet + cpu.regSet.getFlagsShort();
+            String regBefore = "";
+            if (isDebug) { regBefore = "Before Op:" + cpu.regSet.toString() + cpu.regSet.getFlagsShort(); }
 
             int cycles = cpu.executeNextOpcode();
-            breakpointAtOpcode((short)0x40, regBefore);
-
             cycles_count += cycles;
+
             timer.updateTimers(cycles);
             lcd.updateGraphics(cycles);
             interrupts.doInterrupts();
+
+            if (memoryMap.readMemory(MemoryMap.SC) == 0x81) {
+                char c = memoryMap.readMemory(MemoryMap.SB);
+                System.out.println("SC: " + c);
+                memoryMap.writeMemory(MemoryMap.SC, (char)0);
+            }
 
             // Debugging:
             // startDebugAt((short)0x215E, 150);
             // breakpointAtAddress((short)0x215E);
 
-            // if (isDebug) {
+            if (isDebug) {
             //     updateRAMTable(vRamTable, memoryMap.getVRAM());
             //     updateRAMTable(hRamTable, memoryMap.getHRAM());
             //     updateRAMTable(ioTable, memoryMap.getIO());
-                updateRegSetTable(regTable);
+            //     updateRegSetTable(regTable);
                 updateMemRegSetTable(memRegTable);
-            // }
+            }
 
-            // startDebugAt((short)0x47f0, 150, regBefore);
-            // breakpointAtAddress((short)0x480a);
+            // startDebugAt((short)0x0183, 0, regBefore);
+            // breakpointAtAddress((short)0x0183);
+
+            // startDebugAtRegisterValue(Reg_16.BC, 0x0001);
+            // startDebugAtMemoryValue(MemoryMap.LY, (char)LCD.SCREEN_RESOLUTION_Y);
 
             // breakpointAtOpcode((short)0x40);
         }
@@ -190,6 +197,53 @@ public class Emulator
         System.out.println("OP Code: " + cpu.current_opcode);
         System.out.println("Old: " + regBefore);
         System.out.println("New: " + cpu.regSet + cpu.regSet.getFlagsShort());
+
+        try {
+            System.out.print("Press Enter to step through: ");
+            System.in.read();
+            System.out.println("Pressed enter!\n");
+            isDebug = true;
+
+        } catch (Exception e) { }
+    }
+
+    public static void startDebugAtRegisterValue(Reg_16 src, int value) {
+        int regValue = registerSet.getWord(src);
+
+        if (isDebug) {
+            System.out.println("-- OP Code: " + cpu.current_opcode);
+            System.out.println("-- " + src.name() + " == " + regValue);
+            System.out.println(cpu.regSet + cpu.regSet.getFlagsShort());
+        }
+
+        if (regValue != value) {
+            return;
+        }
+
+        isDebug = true;
+
+        try {
+            System.out.print("Press Enter to step through: ");
+            System.in.read();
+            System.out.println("Pressed enter!\n");
+            isDebug = true;
+
+        } catch (Exception e) { }
+    }
+
+    public static void startDebugAtMemoryValue(int address, char value) {
+        char memoryValue = memoryMap.readMemory(address);
+
+        if (isDebug) {
+            System.out.println("-- OP Code: " + cpu.current_opcode);
+            System.out.println("-- " + address + " == " + (int)memoryValue);
+        }
+
+        if (memoryValue != value) {
+            return;
+        }
+
+        isDebug = true;
 
         try {
             System.out.print("Press Enter to step through: ");
@@ -445,16 +499,18 @@ public class Emulator
             updateRAMTable(romTable, memoryMap.getRom());
             updateMemRegSetTable(memRegTable);
 
+            long startTime = System.nanoTime();
+
             // Main loop for the emulator
             while(true) {
-                long startTime = new Date().getTime();
                 emulatorUpdate();
 
-                float timeDiff = 0;
-                while(timeDiff < DELTA_TIME) { timeDiff = new Date().getTime() - startTime; }
-                _fps = 1000.f / timeDiff;
+                double timeDiff = 0;
+                while(timeDiff < DELTA_TIME) { timeDiff = System.nanoTime() - startTime; }
+                _fps = (float)(1e9/timeDiff);
+                startTime = System.nanoTime();
 
-                jframe.setTitle("FPS: " + Emulator._fps.toString());
+                jframe.setTitle("FPS: " + _fps.toString());
             }
         } catch (Exception e) {
             System.out.println(e.getMessage());

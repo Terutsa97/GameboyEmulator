@@ -44,6 +44,7 @@ public class MemoryMap {
 	public static final int SCY = 0xFF42;
 	public static final int SCX = 0xFF43;
 	public static final int LY = 0xFF44;
+	public static final int DMA_TRANSFER = 0xFF46;
 	public static final int BGP = 0xFF47;
 	public static final int WINDOW_X = 0xFF4B;
 	public static final int WINDOW_Y = 0xFF4A;
@@ -146,22 +147,24 @@ public class MemoryMap {
 	 */
 	public char readMemory(int address) {
 		try {
-			if 		(address < 0x8000) 						return romData[address];
-			else if (address == 0xFF00) return (char)joystick.getJoypadState();
-			else if (0x8000 <= address && address < 0xA000)
+			if (address < 0x8000) return romData[address];
+			if (address == 0xFF00) return (char)joystick.getJoypadState();
+
+			if (0x8000 <= address && address < 0xA000)
 			{
-				if (address == 0xff44 || address == 0xff02) { return 0xff; }
+				if (address == LY || address == SC) { return 0xff; }
 				return vRAM[address - 0x8000];
 			}
-			else if (0xA000 <= address && address < 0xC000) return sRAM[address - 0xA000];
-			else if (0xC000 <= address && address < 0xE000) return wRAM[address - 0xC000];
-			else if (0xE000 <= address && address < 0xFE00) return wRAM[address - 0xE000];
-			else if (0xFE00 <= address && address < 0xFEA0) return OAM[address - 0xFE00];
-			else if (0xFF00 <= address && address < 0xFF4C) return io[address - 0xFF00];
-			else if (0xFF80 <= address && address <= 0xFFFF) return hRAM[address - 0xFF80];
-			else throw new IndexOutOfBoundsException();
-		}
-		catch (IndexOutOfBoundsException e) {
+
+			if (0xA000 <= address && address < 0xC000) return sRAM[address - 0xA000];
+			if (0xC000 <= address && address < 0xE000) return wRAM[address - 0xC000];
+			if (0xE000 <= address && address < 0xFE00) return wRAM[address - 0xE000];
+			if (0xFE00 <= address && address < 0xFEA0) return OAM[address - 0xFE00];
+			if (0xFF00 <= address && address < 0xFF4C) return io[address - 0xFF00];
+			if (0xFF80 <= address && address <= 0xFFFF) return hRAM[address - 0xFF80];
+
+			throw new IndexOutOfBoundsException();
+		} catch (IndexOutOfBoundsException e) {
 			// System.out.println("Invalid memory read at " + String.format("%04x", address));
 			return 0;
 		}
@@ -175,19 +178,14 @@ public class MemoryMap {
 	public void writeMemory(int address, char data) {
 		try {
 			if (address < 0x8000) throw new IndexOutOfBoundsException();
+			else if (address == DMA_TRANSFER) doDMATransfer(data);
+			else if (address == LY) io[address - 0xFF00] = 0;
 			else if (0x8000 <= address && address < 0xA000)	vRAM[address - 0x8000] = data;
 			else if (0xA000 <= address && address < 0xC000) sRAM[address - 0xA000] = data;
 			else if (0xC000 <= address && address < 0xE000) wRAM[address - 0xC000] = data;
 			else if (0xE000 <= address && address < 0xFE00) wRAM[address - 0xE000] = data;
 			else if (0xFE00 <= address && address < 0xFEA0) OAM[address - 0xFE00] = data;
-			else if (0xFF00 <= address && address < 0xFF4C) {
-				if (address == LY) {
-					io[address - 0xFF00] = 0;
-					return;
-				}
-
-				io[address - 0xFF00] = data;
-			}
+			else if (0xFF00 <= address && address < 0xFF4C) io[address - 0xFF00] = data;
 			else if (0xFF80 <= address && address <= 0xFFFF) hRAM[address - 0xFF80] = data;
 			else throw new IndexOutOfBoundsException();
 		}
@@ -196,24 +194,41 @@ public class MemoryMap {
 		}
 	}
 
+	public void writeWord(int address, int value) {
+		writeMemory(address + 1, (char)((value & 0xff00) >> 8));
+		writeMemory(address, (char)(value & 0xff));
+	}
+
+	// short operand = (short)(((readMemory(_registerSet.getSP()) + 1) << 8) + (readMemory(_registerSet.getSP())));
+	public short readWord(int address) {
+		int data1 = (int)readMemory(address + 1) << 8;
+		int data2 = (int)readMemory(address);
+
+		return (short)(data1 + (data2));
+	}
+
 	/**
 	 * Pushes a register to the stack.
 	 */
 	public void pushToStack(Reg_16 source) {
-		int value = _registerSet.getWord(source);
-
+		writeWord(_registerSet.getSP(), _registerSet.getWord(source));
 		_registerSet.setSP(_registerSet.getSP() - 2);
-		writeMemory(_registerSet.getSP(), (char)(value >> 8));
-		writeMemory(_registerSet.getSP() + 1, (char)(value & 0xff));
 	}
 
 	/**
 	 * Pops a short value from the stack.
 	 */
 	public short popFromStack() {
-		short operand = (short)(((readMemory(_registerSet.getSP()) + 1) << 8) + (readMemory(_registerSet.getSP())));
 		_registerSet.setSP(_registerSet.getSP() + 2);
+		short operand = readWord(_registerSet.getSP());
 		return operand;
+	}
+
+	public void doDMATransfer(char data) {
+		short address = (short)(data << 8);
+		for (int i = 0; i < 0xA0; i++) {
+			writeMemory(OAM_START + i, readMemory(address + i));
+		}
 	}
 
 	public char[] getRom() { return romData; }

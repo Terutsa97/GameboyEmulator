@@ -25,6 +25,8 @@ target/
 *.tar.gz
 *.rar
 
+test_roms/**
+
 # vscode related
 .vscode/
 

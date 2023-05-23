@@ -215,7 +215,7 @@ public class CPU {
 	 * @param isAdest
 	 */
 	void LD_A(boolean isAdest) {
-		short operand = (short)((memMap.readMemory(regSet.getPC() + 1) << 8) + (memMap.readMemory(regSet.getPC())));
+		short operand = memMap.readWord(regSet.getPC());
 
 		if (isAdest) {
 			regSet.setA(memMap.readMemory(regSet.getPC()));
@@ -232,13 +232,12 @@ public class CPU {
 	 * @param isdest
 	 */
 	void LD_16_IM(Reg_16 register, boolean isdest) {
-		short operand = (short)((memMap.readMemory(regSet.getPC() + 1) << 8) + (memMap.readMemory(regSet.getPC())));
+		short operand = memMap.readWord(regSet.getPC());
 
 		if (isdest) {
 			regSet.setWord(register, operand);
 		} else {
-			memMap.writeMemory(operand, (char)(regSet.getWord(register) & 0xff));
-			memMap.writeMemory(operand + 1, (char)(regSet.getWord(register) >> 8));
+			memMap.writeWord(operand, regSet.getWord(register));
 		}
 
 		regSet.setPC(regSet.getPC() + 2);
@@ -304,23 +303,15 @@ public class CPU {
 	 * Pops two bytes off stack into register pair nn. Then, Increments the Stack Pointer (SP) twice.
 	 */
 	void POP(Reg_16 destination) {
-		short operand = (short)(((memMap.readMemory(regSet.getSP()) + 1) << 8) + (memMap.readMemory(regSet.getSP())));
-
+		short operand = memMap.popFromStack();
 		regSet.setWord(destination, operand);
-		regSet.setSP(regSet.getSP() + 2);
 	}
 
 	/**
 	 * Pushes register pair nn onto stack. Then, decrements the Stack Pointer (SP) twice.
 	 */
 	void PUSH(Reg_16 source) {
-		int value = regSet.getWord(source);
-
-		memMap.writeMemory(regSet.getSP(), (char)(value >> 8));
-		memMap.writeMemory(regSet.getSP() + 1, (char)(value & 0xff));
-		regSet.setSP(regSet.getSP() - 2);
-
-		// int t = 1/0;
+		memMap.pushToStack(source);
 	}
 
 	//#endregion
@@ -653,7 +644,7 @@ public class CPU {
 	 */
 	void CP(Reg_8 source) {
 		int value = (source != null) ? regSet.getByte(source) : memMap.readMemory(regSet.getWord(Reg_16.HL));
-		int result = regSet.getA() - value + (regSet.getCarryFlag() ? 1 : 0);
+		int result = regSet.getA() - value;
 		int before = regSet.getA();
 
 		if (result != 0) regSet.clearZeroFlag();
@@ -673,7 +664,7 @@ public class CPU {
 	 */
 	void CP_IM() {
 		short value = (short)(memMap.readMemory(regSet.getPC()));
-		int result = regSet.getA() - value + (regSet.getCarryFlag() ? 1 : 0);
+		int result = regSet.getA() - value;
 		int before = regSet.getA();
 
 		if (result != 0) regSet.clearZeroFlag();
@@ -1159,7 +1150,7 @@ public class CPU {
 	 * Jump to address at nn.
 	 */
 	void JP() {
-		short operand = (short)((memMap.readMemory(regSet.getPC() + 1) << 8) + (memMap.readMemory(regSet.getPC())));
+		short operand = memMap.readWord(regSet.getPC());
 		current_opcode = "JP " + String.format("%04x", (operand & 0xffff));
 		regSet.setPC(operand);
 	}
@@ -1169,14 +1160,34 @@ public class CPU {
 	 * @param flag_condition
 	 */
 	boolean JP_CC(CC_t flag_condition) {
-		short operand = (short)((memMap.readMemory(regSet.getPC() + 1) << 8) + (memMap.readMemory(regSet.getPC())));
+		short operand = memMap.readWord(regSet.getPC());
 		regSet.setPC(regSet.getPC() + 2);
 
-		switch(flag_condition) {
-			case NZ: if (!regSet.getZeroFlag()) regSet.setPC(operand); return true;
-			case Z:  if (regSet.getZeroFlag()) regSet.setPC(operand); return true;
-			case NC: if (!regSet.getCarryFlag()) regSet.setPC(operand); return true;
-			case C:  if (regSet.getCarryFlag()) regSet.setPC(operand); return true;
+		switch (flag_condition) {
+			case NZ:
+				if (!regSet.getZeroFlag()) {
+					regSet.setPC(operand);
+					return true;
+				}
+				break;
+			case Z:
+				if (regSet.getZeroFlag()) {
+					regSet.setPC(operand);
+					return true;
+				}
+				break;
+			case NC:
+				if (!regSet.getCarryFlag()) {
+					regSet.setPC(operand);
+					return true;
+				}
+				break;
+			case C:
+				if (regSet.getCarryFlag()) {
+					regSet.setPC(operand);
+					return true;
+				}
+				break;
 		}
 
 		return false;
@@ -1194,7 +1205,9 @@ public class CPU {
 	 */
 	void JR() {
 		byte operand = (byte)(memMap.readMemory(regSet.getPC()));
-		current_opcode = "JR " + String.format("%04x", operand);
+		regSet.setPC(regSet.getPC() + 1);
+
+		current_opcode = "JR " + String.format("%04x", regSet.getPC() + operand);
 		regSet.setPC(regSet.getPC() + operand);
 	}
 
@@ -1206,11 +1219,31 @@ public class CPU {
 		byte operand = (byte)(memMap.readMemory(regSet.getPC()));
 		regSet.setPC(regSet.getPC() + 1);
 
-		switch(flag_condition) {
-			case NZ: if (!regSet.getZeroFlag()) regSet.setPC(regSet.getPC() + operand); return true;
-			case Z:  if (regSet.getZeroFlag()) regSet.setPC(regSet.getPC() + operand); return true;
-			case NC: if (!regSet.getCarryFlag()) regSet.setPC(regSet.getPC() + operand); return true;
-			case C:  if (regSet.getCarryFlag()) regSet.setPC(regSet.getPC() + operand); return true;
+		switch (flag_condition) {
+			case NZ:
+				if (!regSet.getZeroFlag()) {
+					regSet.setPC(regSet.getPC() + operand);
+					return true;
+				}
+				break;
+			case Z:
+				if (regSet.getZeroFlag()) {
+					regSet.setPC(regSet.getPC() + operand);
+					return true;
+				}
+				break;
+			case NC:
+				if (!regSet.getCarryFlag()) {
+					regSet.setPC(regSet.getPC() + operand);
+					return true;
+				}
+				break;
+			case C:
+				if (regSet.getCarryFlag()) {
+					regSet.setPC(regSet.getPC() + operand);
+					return true;
+				}
+				break;
 		}
 
 		return false;
@@ -1224,8 +1257,9 @@ public class CPU {
 	 * Push address of next instruction onto stack and then jump to address nn.
 	 */
 	void CALL() {
-		short operand = (short)((memMap.readMemory(regSet.getPC() + 1) << 8) + (memMap.readMemory(regSet.getPC())));
-		PUSH(Reg_16.PC);
+		short operand = memMap.readWord(regSet.getPC());
+		regSet.setPC(regSet.getPC() + 2);
+		memMap.pushToStack(Reg_16.PC);
 		regSet.setPC(operand);
 	}
 
@@ -1235,14 +1269,35 @@ public class CPU {
 	 * @param flag_condition
 	 */
 	boolean CALL_CC(CC_t flag_condition) {
-		short operand = (short)((memMap.readMemory(regSet.getPC() + 1) << 8) + (memMap.readMemory(regSet.getPC())));
+		short operand = memMap.readWord(regSet.getPC());
 		regSet.setPC(regSet.getPC() + 2);
+
 		PUSH(Reg_16.PC);
-		switch(flag_condition) {
-			case NZ: if (!regSet.getZeroFlag()) regSet.setPC(operand); return true;
-			case Z:  if (regSet.getZeroFlag()) regSet.setPC(operand); return true;
-			case NC: if (!regSet.getCarryFlag()) regSet.setPC(operand); return true;
-			case C:  if (regSet.getCarryFlag()) regSet.setPC(operand); return true;
+		switch (flag_condition) {
+			case NZ:
+				if (!regSet.getZeroFlag()) {
+					regSet.setPC(operand);
+					return true;
+				}
+				break;
+			case Z:
+				if (regSet.getZeroFlag()) {
+					regSet.setPC(operand);
+					return true;
+				}
+				break;
+			case NC:
+				if (!regSet.getCarryFlag()) {
+					regSet.setPC(operand);
+					return true;
+				}
+				break;
+			case C:
+				if (regSet.getCarryFlag()) {
+					regSet.setPC(operand);
+					return true;
+				}
+				break;
 		}
 
 		return false;
@@ -1272,8 +1327,7 @@ public class CPU {
 	 * Pop two bytes from stack & jump to that address.
 	 */
 	void RET() {
-		short operand = (short)(((memMap.readMemory(regSet.getSP()) + 1) << 8) + (memMap.readMemory(regSet.getSP())));
-		regSet.setSP(regSet.getSP() + 2);
+		short operand = memMap.popFromStack();
 		regSet.setPC(operand);
 	}
 
@@ -1283,14 +1337,15 @@ public class CPU {
 	 * @param flag_condition
 	 */
 	boolean RET_CC(CC_t flag_condition) {
-		short operand = (short)(((memMap.readMemory(regSet.getSP()) + 1) << 8) + (memMap.readMemory(regSet.getSP())));
-		regSet.setSP(regSet.getSP() + 2);
+		boolean isNZ = flag_condition == CC_t.NZ && !regSet.getZeroFlag();
+		boolean isZ = flag_condition == CC_t.Z && regSet.getZeroFlag();
+		boolean isNC = flag_condition == CC_t.NC && !regSet.getCarryFlag();
+		boolean isC = flag_condition == CC_t.C && regSet.getCarryFlag();
 
-		switch(flag_condition) {
-			case NZ: if (!regSet.getZeroFlag()) regSet.setPC(operand); return true;
-			case Z:  if (regSet.getZeroFlag()) regSet.setPC(operand); return true;
-			case NC: if (!regSet.getCarryFlag()) regSet.setPC(operand); return true;
-			case C:  if (regSet.getCarryFlag()) regSet.setPC(operand); return true;
+		if (isNZ || isZ || isNC || isC) {
+			short operand = memMap.popFromStack();
+			regSet.setPC(operand);
+			return true;
 		}
 
 		return false;
@@ -1300,8 +1355,8 @@ public class CPU {
 	 * Pop two bytes from stack & jump to that address, then enable interrupts.
 	 */
 	void RETI() {
-		EI();
 		RET();
+		EI();
 	}
 
 	//#endregion

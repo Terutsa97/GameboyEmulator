@@ -126,7 +126,7 @@ public class Joystick implements KeyListener {
 				((currentButton <= 3) && ((keyReq & 0x20) == 0));
 
 			if (requestInterrupt && !previouslyUnset) {
-				System.out.println(getJoystatusShort());
+				// System.out.println(getJoystatusShort());
 				_interrupts.requestInterrupt(Interrupts.InterruptTypes.P10_13);
 			}
 
@@ -138,7 +138,7 @@ public class Joystick implements KeyListener {
 	public void keyReleased(KeyEvent e) {
 		if (boundedKeys.containsKey(e.getKeyCode())) {
 			joystickState |= 1 << (boundedKeys.get(e.getKeyCode()).value);
-			System.out.println(getJoystatusShort());
+			// System.out.println(getJoystatusShort());
 		}
 
 		_memoryMap.writeMemory(0xff00, (char)joystickState);
